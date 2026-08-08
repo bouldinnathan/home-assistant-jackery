@@ -1,0 +1,6 @@
+pytest
+pytest-asyncio
+ruff
+homeassistant
+bleak-retry-connector
+pytest-homeassistant-custom-component

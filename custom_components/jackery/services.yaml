@@ -1,0 +1,20 @@
+refresh:
+  fields:
+    device_id:
+      required: false
+      selector:
+        device:
+          integration: jackery
+
+send_raw_command:
+  fields:
+    device_id:
+      required: false
+      selector:
+        device:
+          integration: jackery
+    command:
+      required: true
+      example: '{"cmd": "data_get", "type": "full"}'
+      selector:
+        object:

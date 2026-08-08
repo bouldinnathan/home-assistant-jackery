@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to a Jackery power station",
+        "description": "Select a Jackery unit Home Assistant has already seen over Bluetooth, or enter its MAC address manually.",
+        "data": {
+          "ble_address": "Bluetooth address"
+        }
+      },
+      "confirm": {
+        "title": "Add Jackery unit",
+        "description": "Add the Jackery power station \"{name}\" discovered over Bluetooth?"
+      }
+    },
+    "abort": {
+      "already_configured": "This Jackery unit is already configured",
+      "no_devices_found": "No Jackery units were found"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jackery options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)",
+          "connect_timeout": "BLE connect timeout (seconds)",
+          "command_timeout": "BLE command response timeout (seconds)",
+          "github_reporting_enabled": "Automatically file GitHub issues for unexpected errors",
+          "github_repo": "GitHub repository (owner/name)",
+          "github_token": "GitHub personal access token (Issues: write only)"
+        }
+      }
+    },
+    "error": {
+      "invalid_repo": "Enter a repository as owner/name",
+      "token_required": "A token is required to enable GitHub issue reporting"
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Immediately poll a Jackery unit over BLE.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The Jackery device to refresh. Optional if only one is configured."
+        }
+      }
+    },
+    "send_raw_command": {
+      "name": "Send raw command",
+      "description": "Send an arbitrary JSON command directly to the device over BLE and return its response. Useful for testing or correcting the reverse-engineered protocol.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The Jackery device to send the command to. Optional if only one is configured."
+        },
+        "command": {
+          "name": "Command",
+          "description": "A JSON object to send, e.g. {\"cmd\": \"data_get\", \"type\": \"full\"}."
+        }
+      }
+    }
+  }
+}
