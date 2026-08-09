@@ -4,3 +4,10 @@ ruff
 homeassistant
 bleak-retry-connector
 pytest-homeassistant-custom-component
+# homeassistant.components.bluetooth depends on homeassistant.components.usb,
+# which needs these - not pulled in transitively by the "homeassistant"
+# PyPI package itself. pyserial and serialx cover the module usb/__init__.py
+# imports across older and newer Home Assistant versions respectively.
+aiousbwatcher
+pyserial
+serialx
