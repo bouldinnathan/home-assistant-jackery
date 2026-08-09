@@ -100,6 +100,23 @@ async def test_send_raw_command_service_parses_json_string_and_fires_event(hass)
     assert events[0].data["frames"] == [{"ok": True}]
 
 
+async def test_send_raw_command_service_accepts_a_dict_directly(hass) -> None:
+    entry = await _setup_entry(hass)
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator.async_send_raw_command = AsyncMock(return_value=[{"ok": True}])
+
+    result = await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SEND_RAW_COMMAND,
+        {ATTR_COMMAND: {"cmd": "data_get"}},
+        blocking=True,
+        return_response=True,
+    )
+
+    coordinator.async_send_raw_command.assert_awaited_once_with({"cmd": "data_get"})
+    assert result["frames"] == [{"ok": True}]
+
+
 async def test_send_raw_command_rejects_non_json_string(hass) -> None:
     await _setup_entry(hass)
 
@@ -165,3 +182,23 @@ async def test_no_configured_devices_raises_clear_error(hass) -> None:
 
     with pytest.raises(HomeAssistantError, match="No Jackery device is configured"):
         await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {}, blocking=True)
+
+
+async def test_unknown_device_id_raises_clear_error(hass) -> None:
+    await _setup_entry(hass)
+
+    with pytest.raises(HomeAssistantError, match="No Jackery device found"):
+        await hass.services.async_call(
+            DOMAIN, SERVICE_REFRESH, {ATTR_DEVICE_ID: "does-not-exist"}, blocking=True
+        )
+
+
+async def test_changing_options_reloads_the_config_entry(hass) -> None:
+    entry = await _setup_entry(hass)
+    first_coordinator = hass.data[DOMAIN][entry.entry_id]
+
+    hass.config_entries.async_update_entry(entry, options={"scan_interval": 60})
+    await hass.async_block_till_done()
+
+    assert hass.data[DOMAIN][entry.entry_id] is not first_coordinator
+    assert hass.data[DOMAIN][entry.entry_id].update_interval.total_seconds() == 60

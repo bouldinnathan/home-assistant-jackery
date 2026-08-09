@@ -52,16 +52,24 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "Bluetooth discovery for Jackery: address=%s name=%s", discovery_info.address, discovery_info.name
         )
         await self.async_set_unique_id(discovery_info.address)
+        if discovery_info.address in self._async_current_ids():
+            _LOGGER.debug("Ignoring Bluetooth discovery for %s: already configured", discovery_info.address)
         self._abort_if_unique_id_configured()
         self._discovered_address = discovery_info.address
         self._discovered_name = discovery_info.name or discovery_info.address
         self.context["title_placeholders"] = {"name": self._discovered_name}
+        _LOGGER.info(
+            "Discovered new Jackery unit over Bluetooth: address=%s name=%s",
+            self._discovered_address,
+            self._discovered_name,
+        )
         return await self.async_step_confirm()
 
     async def async_step_confirm(self, user_input: dict[str, Any] | None = None):
         """Confirm adding the Bluetooth-discovered Jackery unit."""
         assert self._discovered_address is not None
         if user_input is not None:
+            _LOGGER.debug("User confirmed adding Bluetooth-discovered Jackery unit %s", self._discovered_address)
             return self._async_create(self._discovered_address, self._discovered_name or self._discovered_address)
         self._set_confirm_only()
         return self.async_show_form(
@@ -78,12 +86,16 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for info in async_discovered_service_info(self.hass, connectable=True)
             if info.address not in current_addresses and _looks_like_jackery(info.name)
         }
+        _LOGGER.debug(
+            "User (manual) setup step: %d already-seen Jackery-looking device(s) offered", len(self._discovered_devices)
+        )
 
         if user_input is not None:
             address = user_input[CONF_BLE_ADDRESS]
             await self.async_set_unique_id(address, raise_on_progress=False)
             self._abort_if_unique_id_configured()
             name = self._discovered_devices.get(address, address)
+            _LOGGER.debug("User manually entered Jackery address %s (name=%s)", address, name)
             return self._async_create(address, name)
 
         if self._discovered_devices:
@@ -95,6 +107,7 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @callback
     def _async_create(self, address: str, name: str):
+        _LOGGER.info("Creating Jackery config entry for %s (%s)", address, name)
         return self.async_create_entry(title=name, data={CONF_BLE_ADDRESS: address})
 
     @staticmethod
@@ -119,7 +132,15 @@ class JackeryOptionsFlow(config_entries.OptionsFlow):
                     errors[CONF_GITHUB_REPO] = "invalid_repo"
                 if not token:
                     errors[CONF_GITHUB_TOKEN] = "token_required"
-            if not errors:
+            if errors:
+                _LOGGER.debug("Options flow validation failed for entry %s: %s", self.config_entry.entry_id, errors)
+            else:
+                _LOGGER.info(
+                    "Updating options for Jackery entry %s: scan_interval=%s, github_reporting_enabled=%s",
+                    self.config_entry.entry_id,
+                    user_input.get(CONF_SCAN_INTERVAL),
+                    user_input.get(CONF_GITHUB_REPORTING_ENABLED),
+                )
                 return self.async_create_entry(title="", data=user_input)
 
         schema = vol.Schema(

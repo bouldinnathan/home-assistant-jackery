@@ -115,6 +115,70 @@ async def test_run_session_raises_on_command_timeout(monkeypatch, fake_ble_devic
     assert fake_client.disconnected is True
 
 
+async def test_run_session_raises_on_connect_timeout(monkeypatch, fake_ble_device) -> None:
+    async def _slow_establish_connection(_client_cls, _ble_device, _address):
+        await asyncio.sleep(1)
+        raise AssertionError("should have timed out before returning")
+
+    monkeypatch.setattr(
+        "bleak_retry_connector.establish_connection",
+        _slow_establish_connection,
+    )
+
+    client = JackeryBLEClient("AA:BB:CC:DD:EE:FF")
+    with pytest.raises(JackeryConnectionError):
+        await client.async_run_session(
+            fake_ble_device, [{"cmd": "device_get"}], connect_timeout=0.05, command_timeout=1
+        )
+
+
+async def test_run_session_disconnects_even_when_disconnect_itself_errors(monkeypatch, fake_ble_device) -> None:
+    fake_client = _FakeBleakClient(responses={"device_get": [{"ok": True}]})
+
+    async def _raise_on_disconnect() -> None:
+        raise OSError("adapter already gone")
+
+    fake_client.disconnect = _raise_on_disconnect
+
+    async def _fake_establish_connection(_client_cls, _ble_device, _address):
+        return fake_client
+
+    monkeypatch.setattr(
+        "bleak_retry_connector.establish_connection",
+        _fake_establish_connection,
+    )
+
+    client = JackeryBLEClient("AA:BB:CC:DD:EE:FF")
+    # A disconnect() failure must not propagate past a successful session.
+    frames = await client.async_run_session(
+        fake_ble_device, [{"cmd": "device_get"}], connect_timeout=1, command_timeout=1
+    )
+    assert frames == [{"ok": True}]
+
+
+async def test_run_session_collects_multiple_responses_per_command(monkeypatch, fake_ble_device) -> None:
+    fake_client = _FakeBleakClient(responses={"data_get": [{"soc": 87}, {"outputWatts": 45}]})
+
+    async def _fake_establish_connection(_client_cls, _ble_device, _address):
+        return fake_client
+
+    monkeypatch.setattr(
+        "bleak_retry_connector.establish_connection",
+        _fake_establish_connection,
+    )
+
+    client = JackeryBLEClient("AA:BB:CC:DD:EE:FF")
+    frames = await client.async_run_session(
+        fake_ble_device,
+        [{"cmd": "data_get"}],
+        connect_timeout=1,
+        command_timeout=1,
+        responses_per_command=2,
+    )
+
+    assert frames == [{"soc": 87}, {"outputWatts": 45}]
+
+
 async def test_sessions_are_serialized_by_the_internal_lock(monkeypatch, fake_ble_device) -> None:
     fake_client = _FakeBleakClient(responses={"device_get": [{"ok": True}]}, notify_delay=0.05)
     connect_calls = 0

@@ -80,7 +80,9 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 def _async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_REFRESH):
+        _LOGGER.debug("Jackery services already registered, skipping")
         return
+    _LOGGER.debug("Registering Jackery services: %s, %s", SERVICE_REFRESH, SERVICE_SEND_RAW_COMMAND)
 
     async def _refresh(call: ServiceCall) -> None:
         coordinator = _resolve_coordinator(hass, call.data.get(ATTR_DEVICE_ID))
@@ -97,6 +99,7 @@ def _async_register_services(hass: HomeAssistant) -> None:
         if not isinstance(command, dict):
             raise HomeAssistantError("command must decode to a JSON object")
 
+        _LOGGER.info("Raw command requested for Jackery unit %s: %s", coordinator.address, command)
         frames = await coordinator.async_send_raw_command(command)
         hass.bus.async_fire(EVENT_RAW_COMMAND_RESPONSE, {"address": coordinator.address, "frames": frames})
         if getattr(call, "return_response", True):

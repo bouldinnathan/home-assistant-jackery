@@ -12,7 +12,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.jackery.const import CONF_BLE_ADDRESS, DOMAIN
@@ -102,6 +104,36 @@ async def test_turning_on_switch_calls_the_ble_write_path(hass, mock_ble_poll) -
     first_call_commands = mock_ble_poll.await_args_list[0].args[1]
     assert first_call_commands == [{"cmd": "data_set", "data": {"acOutput": True}}]
     assert hass.states.get(entity_id).state == "on"
+
+
+async def test_turning_off_switch_calls_the_ble_write_path(hass, mock_ble_poll) -> None:
+    mock_ble_poll.return_value = [{"acOutput": True}]
+    entry = await _setup_entry(hass)
+    entity_id = _entity_id_for(hass, entry, "switch_acOutput")
+    assert hass.states.get(entity_id).state == "on"
+
+    mock_ble_poll.reset_mock()
+    mock_ble_poll.return_value = []
+
+    await hass.services.async_call("switch", "turn_off", {"entity_id": entity_id}, blocking=True)
+    await hass.async_block_till_done()
+
+    first_call_commands = mock_ble_poll.await_args_list[0].args[1]
+    assert first_call_commands == [{"cmd": "data_set", "data": {"acOutput": False}}]
+    assert hass.states.get(entity_id).state == "off"
+
+
+async def test_device_info_reflects_identified_model_and_firmware(hass, mock_ble_poll) -> None:
+    mock_ble_poll.return_value = [{"soc": 87, "deviceModel": "Explorer 2000 Plus", "fwVersion": "1.2.3"}]
+    entry = await _setup_entry(hass)
+
+    device_registry = dr.async_get(hass)
+    device = next(d for d in device_registry.devices.values() if entry.entry_id in d.config_entries)
+
+    assert device.manufacturer == "Jackery"
+    assert device.model == "Explorer 2000 Plus"
+    assert device.sw_version == "1.2.3"
+    assert (CONNECTION_BLUETOOTH, ADDRESS) in device.connections
 
 
 async def test_new_fields_on_a_later_poll_add_new_entities(hass, mock_ble_poll) -> None:

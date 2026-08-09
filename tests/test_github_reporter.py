@@ -162,6 +162,30 @@ async def test_report_respects_daily_rate_cap(hass) -> None:
     assert len(session.post_calls) == 5
 
 
+async def test_report_creates_an_issue_when_search_request_fails(hass) -> None:
+    # A non-200 search response means we can't confirm whether a duplicate
+    # exists; the reporter should assume no duplicate and still file, rather
+    # than silently dropping a genuine bug report.
+    session = _FakeSession(search_total_count=0)
+    session.get = lambda url, **kwargs: _FakeResponse(503, {})
+    reporter = GitHubIssueReporter(hass, repo="owner/repo", token="tok")
+
+    with _patched_session(session):
+        await reporter.async_report(_make_error(), "poll")
+
+    assert len(session.post_calls) == 1
+
+
+async def test_report_does_not_raise_when_issue_creation_request_fails(hass) -> None:
+    session = _FakeSession(search_total_count=0, create_status=500)
+    reporter = GitHubIssueReporter(hass, repo="owner/repo", token="tok")
+
+    with _patched_session(session):
+        await reporter.async_report(_make_error(), "poll")  # must not raise
+
+    assert len(session.post_calls) == 1
+
+
 async def test_reporter_never_raises_when_the_network_call_fails(hass) -> None:
     reporter = GitHubIssueReporter(hass, repo="owner/repo", token="tok")
 

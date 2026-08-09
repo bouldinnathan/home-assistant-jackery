@@ -113,6 +113,12 @@ class JackeryCoordinator(DataUpdateCoordinator[DeviceTelemetry]):
             await self._report(err, "poll")
             raise UpdateFailed(f"Unexpected error polling {self.address}: {err}") from err
 
+        if self._consecutive_failures > 0:
+            _LOGGER.info(
+                "Jackery unit %s recovered after %d consecutive failure(s)",
+                self.address,
+                self._consecutive_failures,
+            )
         self._consecutive_failures = 0
         self._telemetry.connected = True
         self._telemetry.rssi = getattr(ble_device, "rssi", None)

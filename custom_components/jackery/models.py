@@ -11,10 +11,13 @@ of slightly less polished default entity names.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class FieldKind(Enum):
@@ -110,16 +113,28 @@ class DeviceTelemetry:
 
     def merge(self, payload: dict[str, Any]) -> None:
         """Merge a newly decoded JSON payload's flattened fields into state."""
-        self.fields.update(flatten(payload))
-        for key in ("model", "deviceModel", "productModel"):
-            if key in self.fields and isinstance(self.fields[key], str):
-                self.model = self.fields[key]
-                break
-        for key in ("sn", "serial", "serialNumber", "deviceSn"):
-            if key in self.fields and isinstance(self.fields[key], str):
-                self.serial = self.fields[key]
-                break
-        for key in ("fw", "firmware", "firmwareVersion", "fwVersion"):
-            if key in self.fields and isinstance(self.fields[key], str):
-                self.firmware_version = self.fields[key]
-                break
+        new_fields = flatten(payload)
+        new_keys = [key for key in new_fields if key not in self.fields]
+        self.fields.update(new_fields)
+        if new_keys:
+            _LOGGER.debug("Telemetry for %s: %d new field(s) discovered: %s", self.address, len(new_keys), new_keys)
+
+        previous_model, previous_serial, previous_firmware = self.model, self.serial, self.firmware_version
+        self.model = self._first_string_field(("model", "deviceModel", "productModel"))
+        self.serial = self._first_string_field(("sn", "serial", "serialNumber", "deviceSn"))
+        self.firmware_version = self._first_string_field(("fw", "firmware", "firmwareVersion", "fwVersion"))
+
+        if self.model is not None and self.model != previous_model:
+            _LOGGER.info("Identified Jackery unit %s as model %s", self.address, self.model)
+        if self.serial is not None and self.serial != previous_serial:
+            _LOGGER.debug("Discovered serial number for Jackery unit %s", self.address)
+        if self.firmware_version is not None and self.firmware_version != previous_firmware:
+            _LOGGER.info("Jackery unit %s reports firmware version %s", self.address, self.firmware_version)
+
+    def _first_string_field(self, keys: tuple[str, ...]) -> str | None:
+        """Return the first string value found in ``self.fields`` for ``keys``, in priority order."""
+        for key in keys:
+            value = self.fields.get(key)
+            if isinstance(value, str):
+                return value
+        return None

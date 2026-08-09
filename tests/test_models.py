@@ -42,6 +42,17 @@ def test_classify_temperature_voltage_current() -> None:
     assert classify_field("outputCurrent", 2.5) is FieldKind.CURRENT_A
 
 
+def test_classify_energy_and_duration_like_keys() -> None:
+    assert classify_field("batteryCapacityWh", 2048) is FieldKind.ENERGY_WH
+    assert classify_field("remainingTime", 120) is FieldKind.DURATION_MIN
+
+
+def test_classify_switch_hint_matches_ignoring_separators() -> None:
+    # Hints are matched against the key with underscores/dashes stripped, so
+    # "ac_switch" (a device field) still matches the "acswitch" hint.
+    assert classify_field("ac_switch", True, switch_key_hints=("acswitch",)) is FieldKind.SWITCH
+
+
 def test_classify_boolean_defaults_to_binary_sensor() -> None:
     assert classify_field("chargingFlag", True) is FieldKind.BINARY_SENSOR
 
@@ -69,6 +80,14 @@ def test_humanize_field_splits_camel_case_and_strips_prefix() -> None:
     assert humanize_field("soc") == "Soc"
 
 
+def test_humanize_field_replaces_underscores() -> None:
+    assert humanize_field("output_watts") == "Output watts"
+
+
+def test_flatten_handles_dicts_nested_inside_lists() -> None:
+    assert flatten({"ports": [{"nested": {"watts": 5}}]}) == {"ports[0].nested.watts": 5}
+
+
 def test_device_telemetry_merge_updates_fields_and_identity() -> None:
     telemetry = DeviceTelemetry(address="AA:BB:CC:DD:EE:FF")
     telemetry.merge({"soc": 80, "deviceModel": "Explorer 2000 Plus", "fwVersion": "1.2.3"})
@@ -82,3 +101,42 @@ def test_device_telemetry_merge_is_cumulative_across_calls() -> None:
     telemetry.merge({"soc": 80})
     telemetry.merge({"outputWatts": 45})
     assert telemetry.fields == {"soc": 80, "outputWatts": 45}
+
+
+def test_device_telemetry_merge_detects_serial_number() -> None:
+    telemetry = DeviceTelemetry(address="AA:BB:CC:DD:EE:FF")
+    telemetry.merge({"serialNumber": "JK1234567890"})
+    assert telemetry.serial == "JK1234567890"
+
+
+def test_device_telemetry_merge_ignores_non_string_identity_values() -> None:
+    telemetry = DeviceTelemetry(address="AA:BB:CC:DD:EE:FF")
+    telemetry.merge({"model": 12345})
+    assert telemetry.model is None
+
+
+def test_device_telemetry_merge_preserves_identity_across_later_polls_lacking_it() -> None:
+    telemetry = DeviceTelemetry(address="AA:BB:CC:DD:EE:FF")
+    telemetry.merge({"deviceModel": "Explorer 2000 Plus"})
+    telemetry.merge({"soc": 42})
+    assert telemetry.model == "Explorer 2000 Plus"
+
+
+def test_device_telemetry_merge_logs_model_identification_once(caplog) -> None:
+    telemetry = DeviceTelemetry(address="AA:BB:CC:DD:EE:FF")
+    with caplog.at_level("INFO", logger="custom_components.jackery.models"):
+        telemetry.merge({"deviceModel": "Explorer 2000 Plus"})
+        caplog.clear()
+        telemetry.merge({"deviceModel": "Explorer 2000 Plus", "soc": 10})
+
+    # The second merge repeats the same model value, so it must not log a
+    # second "identified" message - only genuine transitions are logged.
+    assert not any("Identified Jackery unit" in record.message for record in caplog.records)
+
+
+def test_device_telemetry_merge_logs_new_field_discovery(caplog) -> None:
+    telemetry = DeviceTelemetry(address="AA:BB:CC:DD:EE:FF")
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.models"):
+        telemetry.merge({"soc": 80})
+
+    assert any("new field(s) discovered" in record.message for record in caplog.records)

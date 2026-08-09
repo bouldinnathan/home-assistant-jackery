@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -12,11 +13,16 @@ from .const import DIAGNOSTIC_REDACT, DOMAIN, VERSION
 from .coordinator import JackeryCoordinator
 from .redact import sanitize_data
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     """Return a redacted diagnostics snapshot for one Jackery config entry."""
+    _LOGGER.debug("Generating diagnostics for Jackery entry %s", entry.entry_id)
     coordinator: JackeryCoordinator | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     telemetry = coordinator.telemetry if coordinator is not None else None
+    if coordinator is None:
+        _LOGGER.debug("Diagnostics for entry %s: no coordinator loaded (entry not set up)", entry.entry_id)
 
     diagnostics: dict[str, Any] = {
         "integration_version": VERSION,
@@ -39,4 +45,10 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         },
     }
     sanitized = sanitize_data(diagnostics)
+    _LOGGER.debug(
+        "Diagnostics for entry %s ready: %d field(s), connected=%s",
+        entry.entry_id,
+        diagnostics["telemetry"]["field_count"],
+        diagnostics["telemetry"]["connected"],
+    )
     return async_redact_data(sanitized, DIAGNOSTIC_REDACT)

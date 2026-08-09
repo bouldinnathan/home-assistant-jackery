@@ -73,3 +73,27 @@ def test_assembler_discards_buffer_once_it_exceeds_the_size_limit() -> None:
     # fresh valid frame afterward parses cleanly rather than being appended
     # to 70KB of garbage.
     assert assembler.feed(b'{"ok": true}') == [{"ok": True}]
+
+
+def test_assembler_skips_garbage_between_two_frames() -> None:
+    assembler = JsonFrameAssembler()
+    chunk = json.dumps({"a": 1}).encode() + b"---not-json---" + json.dumps({"b": 2}).encode()
+    assert assembler.feed(chunk) == [{"a": 1}, {"b": 2}]
+
+
+def test_assembler_handles_nested_objects_as_a_single_frame() -> None:
+    assembler = JsonFrameAssembler()
+    payload = {"port": {"ac": {"watts": 42, "on": True}}}
+    assert assembler.feed(json.dumps(payload).encode()) == [payload]
+
+
+def test_encode_uses_compact_separators_with_no_whitespace() -> None:
+    assert encode({"cmd": "device_get", "data": {"a": 1}}) == b'{"cmd":"device_get","data":{"a":1}}'
+
+
+def test_assembler_logs_a_warning_when_it_discards_an_oversized_buffer(caplog) -> None:
+    assembler = JsonFrameAssembler()
+    with caplog.at_level("WARNING", logger="custom_components.jackery.protocol"):
+        assembler.feed(b'{"key": "' + b"x" * 70000)
+
+    assert any("Discarding" in record.message for record in caplog.records)

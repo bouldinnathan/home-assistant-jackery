@@ -168,6 +168,102 @@ async def test_write_field_unexpected_error_is_reported_and_reraised(
     error_reporter.assert_awaited_once_with(bug, "write")
 
 
+async def test_consecutive_failures_increment_then_reset_on_recovery(hass, coordinator, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: object(),
+    )
+    run_session = AsyncMock(side_effect=JackeryConnectionError("no answer"))
+    monkeypatch.setattr(coordinator._client, "async_run_session", run_session)
+
+    for _ in range(3):
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+    assert coordinator._consecutive_failures == 3
+
+    run_session.side_effect = None
+    run_session.return_value = []
+    await coordinator._async_update_data()
+    assert coordinator._consecutive_failures == 0
+
+
+async def test_send_raw_command_device_not_visible_raises_update_failed(
+    hass, coordinator, error_reporter, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: None,
+    )
+
+    with pytest.raises(UpdateFailed):
+        await coordinator.async_send_raw_command({"cmd": "custom"})
+
+    error_reporter.assert_not_called()
+
+
+async def test_send_raw_command_expected_error_propagates_without_reporting(
+    hass, coordinator, error_reporter, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: object(),
+    )
+    monkeypatch.setattr(
+        coordinator._client,
+        "async_run_session",
+        AsyncMock(side_effect=JackeryConnectionError("no answer")),
+    )
+
+    with pytest.raises(JackeryConnectionError):
+        await coordinator.async_send_raw_command({"cmd": "custom"})
+
+    error_reporter.assert_not_called()
+
+
+async def test_send_raw_command_unexpected_error_is_reported_and_reraised(
+    hass, coordinator, error_reporter, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: object(),
+    )
+    bug = RuntimeError("unexpected shape")
+    monkeypatch.setattr(coordinator._client, "async_run_session", AsyncMock(side_effect=bug))
+
+    with pytest.raises(RuntimeError):
+        await coordinator.async_send_raw_command({"cmd": "custom"})
+
+    error_reporter.assert_awaited_once_with(bug, "send_raw_command")
+
+
+async def test_write_field_device_not_visible_raises_update_failed(hass, coordinator, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: None,
+    )
+
+    with pytest.raises(UpdateFailed):
+        await coordinator.async_write_field("port.acOutput", True)
+
+
+async def test_recovery_after_failures_is_logged(hass, coordinator, monkeypatch, caplog) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: object(),
+    )
+    run_session = AsyncMock(side_effect=JackeryConnectionError("no answer"))
+    monkeypatch.setattr(coordinator._client, "async_run_session", run_session)
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+
+    run_session.side_effect = None
+    run_session.return_value = []
+    with caplog.at_level("INFO", logger="custom_components.jackery.coordinator"):
+        await coordinator._async_update_data()
+
+    assert any("recovered after" in record.message for record in caplog.records)
+
+
 async def test_send_raw_command_merges_response_frames(hass, coordinator, monkeypatch) -> None:
     monkeypatch.setattr(
         "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",

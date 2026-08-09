@@ -54,6 +54,37 @@ async def test_user_step_offers_discovered_jackery_devices(hass, monkeypatch) ->
     assert any(str(key) == CONF_BLE_ADDRESS for key in schema_keys)
 
 
+async def test_user_step_excludes_already_configured_discovered_devices(hass, monkeypatch) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_BLE_ADDRESS: ADDRESS}, unique_id=ADDRESS)
+    entry.add_to_hass(hass)
+    already_configured = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234")
+    other = SimpleNamespace(address="11:22:33:44:55:66", name="Jackery_HL9999")
+    monkeypatch.setattr(
+        "custom_components.jackery.config_flow.async_discovered_service_info",
+        lambda *_a, **_k: [already_configured, other],
+    )
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    schema_keys = result["data_schema"].schema[CONF_BLE_ADDRESS].container
+    assert ADDRESS not in schema_keys
+    assert "11:22:33:44:55:66" in schema_keys
+
+
+async def test_manual_entry_of_a_discovered_address_uses_its_advertised_name(hass, monkeypatch) -> None:
+    discovered = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234")
+    monkeypatch.setattr(
+        "custom_components.jackery.config_flow.async_discovered_service_info",
+        lambda *_a, **_k: [discovered],
+    )
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_BLE_ADDRESS: ADDRESS})
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Jackery_HL1234"
+
+
 async def test_duplicate_address_aborts_as_already_configured(hass, monkeypatch) -> None:
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_BLE_ADDRESS: ADDRESS}, unique_id=ADDRESS)
     entry.add_to_hass(hass)
@@ -139,6 +170,20 @@ async def test_options_flow_requires_repo_and_token_when_github_reporting_enable
     assert result["type"] is FlowResultType.FORM
     assert result["errors"]["github_repo"] == "invalid_repo"
     assert result["errors"]["github_token"] == "token_required"
+
+
+async def test_bluetooth_discovery_and_entry_creation_are_logged_at_info(hass, caplog) -> None:
+    discovery_info = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234")
+
+    with caplog.at_level("INFO", logger="custom_components.jackery.config_flow"):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=discovery_info
+        )
+        await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    messages = [record.message for record in caplog.records]
+    assert any("Discovered new Jackery unit" in message for message in messages)
+    assert any("Creating Jackery config entry" in message for message in messages)
 
 
 async def test_options_flow_accepts_valid_github_reporting_config(hass) -> None:

@@ -53,3 +53,18 @@ async def test_diagnostics_handle_unloaded_entry_gracefully(hass) -> None:
 
     assert diagnostics["coordinator"]["loaded"] is False
     assert diagnostics["telemetry"]["connected"] is None
+
+
+async def test_diagnostics_generation_is_logged_at_debug(hass, caplog) -> None:
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_BLE_ADDRESS: ADDRESS}, unique_id=ADDRESS)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.diagnostics"):
+        diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert diagnostics["telemetry"]["field_count"] == 2
+    messages = [record.message for record in caplog.records]
+    assert any("Generating diagnostics" in message for message in messages)
+    assert any("ready" in message for message in messages)

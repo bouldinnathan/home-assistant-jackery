@@ -26,6 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up Jackery binary sensors, then keep adding new ones as fields appear."""
     coordinator: JackeryCoordinator = hass.data[DOMAIN][entry.entry_id]
+    _LOGGER.debug("Setting up binary_sensor platform for Jackery entry %s", entry.entry_id)
     known_keys: set[str] = set()
 
     @callback
