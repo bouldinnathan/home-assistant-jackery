@@ -104,8 +104,6 @@ backup*/
 /customize.yaml
 /ui-lovelace.yaml
 /known_devices.yaml
-/.meshnet_setup_rollback.json
-.meshnet_setup_rollback.json
 /home-assistant.log*
 /home-assistant_v2.db*
 /OZW_Log.txt

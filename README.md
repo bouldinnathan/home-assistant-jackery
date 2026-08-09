@@ -37,11 +37,14 @@ no MQTT broker - Home Assistant talks directly to the device over BLE.
 
 ## Installation
 
-### HACS (recommended once listed)
+### HACS (recommended)
 
-1. HACS -> Integrations -> ⋮ -> Custom repositories -> add this repo's URL
-   as an "Integration".
-2. Install "Jackery", restart Home Assistant.
+[Open Jackery in HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=bouldinnathan&repository=home-assistant-jackery&category=integration)
+
+1. Open the link above and choose **Download** (or add this repo manually
+   in HACS -> Integrations -> ⋮ -> Custom repositories, category
+   "Integration", then install "Jackery" from the list).
+2. Restart Home Assistant.
 
 ### Manual
 
