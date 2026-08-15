@@ -51,6 +51,19 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         _LOGGER.debug(
             "Bluetooth discovery for Jackery: address=%s name=%s", discovery_info.address, discovery_info.name
         )
+        if not _looks_like_jackery(discovery_info.name):
+            # manifest.json also matches on GATT service UUID 0xFFFF, which is
+            # a generic/reserved value many unrelated BLE devices advertise
+            # for testing (unlike a random 128-bit UUID, it isn't unique to
+            # Jackery hardware - see docs/PROTOCOL.md). Without this check,
+            # any such device nearby would trigger a false "Add Jackery
+            # unit?" prompt.
+            _LOGGER.debug(
+                "Ignoring Bluetooth discovery for %s: name %r doesn't look like a Jackery unit",
+                discovery_info.address,
+                discovery_info.name,
+            )
+            return self.async_abort(reason="not_jackery_device")
         await self.async_set_unique_id(discovery_info.address)
         if discovery_info.address in self._async_current_ids():
             _LOGGER.debug("Ignoring Bluetooth discovery for %s: already configured", discovery_info.address)

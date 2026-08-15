@@ -15,7 +15,8 @@
     },
     "abort": {
       "already_configured": "This Jackery unit is already configured",
-      "no_devices_found": "No Jackery units were found"
+      "no_devices_found": "No Jackery units were found",
+      "not_jackery_device": "The discovered Bluetooth device does not look like a Jackery unit"
     }
   },
   "options": {

@@ -116,6 +116,33 @@ async def test_bluetooth_discovery_confirms_and_creates_entry(hass) -> None:
     assert result["data"][CONF_BLE_ADDRESS] == ADDRESS
 
 
+async def test_bluetooth_discovery_ignores_unrelated_devices_sharing_the_generic_service_uuid(hass) -> None:
+    # manifest.json also matches on GATT service UUID 0xFFFF, a generic/
+    # reserved value many unrelated BLE devices advertise for testing (unlike
+    # a random 128-bit UUID, it isn't unique to Jackery hardware). A device
+    # matched only by that UUID, with a name that doesn't look like a Jackery
+    # unit, must not prompt the user to add it.
+    discovery_info = SimpleNamespace(address=ADDRESS, name="SomeOtherBLEGadget")
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=discovery_info
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_jackery_device"
+
+
+async def test_bluetooth_discovery_ignores_devices_with_no_advertised_name(hass) -> None:
+    discovery_info = SimpleNamespace(address=ADDRESS, name=None)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=discovery_info
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_jackery_device"
+
+
 async def test_bluetooth_discovery_of_already_configured_address_aborts(hass) -> None:
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_BLE_ADDRESS: ADDRESS}, unique_id=ADDRESS)
     entry.add_to_hass(hass)

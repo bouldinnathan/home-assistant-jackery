@@ -24,6 +24,18 @@ your own hardware.
 Source: the `Wlad2288/Ultra_Jack` project's reverse-engineering of the
 Explorer 2000 Ultra.
 
+> **UUID collision note:** `0xFFFF` (expanded to
+> `0000ffff-0000-1000-8000-00805f9b34fb`) is a generic/reserved 16-bit GATT
+> service UUID, not one uniquely assigned to Jackery - plenty of unrelated
+> cheap BLE devices advertise it too (unlike a random 128-bit UUID, which
+> would be Jackery-specific). Home Assistant's Bluetooth discovery matches on
+> `manifest.json`'s `bluetooth` list, which includes this UUID *and* the
+> `Jackery_HL*`/`Jackery*` local-name patterns as independent (OR'd) entries,
+> so `config_flow.async_step_bluetooth` re-checks the advertised name itself
+> before ever prompting to add a device - otherwise an unrelated nearby BLE
+> gadget using the same generic UUID would trigger a false "Add Jackery
+> unit?" prompt.
+
 ## Best-effort, NOT independently confirmed
 
 - **The exact JSON keys inside each request object.** `protocol.py` sends
