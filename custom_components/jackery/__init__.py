@@ -52,9 +52,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
 
     coordinator = JackeryCoordinator(hass, entry, error_reporter=error_reporter)
+    _LOGGER.debug("Requesting first refresh for Jackery entry %s before finishing setup", entry.entry_id)
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    _LOGGER.debug("Forwarding Jackery entry %s to platforms: %s", entry.entry_id, PLATFORMS)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
@@ -129,11 +131,14 @@ def _async_register_services(hass: HomeAssistant) -> None:
 def _resolve_coordinator(hass: HomeAssistant, device_id: str | None) -> JackeryCoordinator:
     entries: dict[str, JackeryCoordinator] = hass.data.get(DOMAIN, {})
     if not entries:
+        _LOGGER.debug("Cannot resolve a Jackery coordinator: no config entries are set up")
         raise HomeAssistantError("No Jackery device is configured")
 
     if device_id is None:
         if len(entries) == 1:
-            return next(iter(entries.values()))
+            coordinator = next(iter(entries.values()))
+            _LOGGER.debug("No device_id given; using the only configured Jackery unit %s", coordinator.address)
+            return coordinator
         raise HomeAssistantError("device_id is required when more than one Jackery unit is configured")
 
     device_registry = dr.async_get(hass)
@@ -141,7 +146,9 @@ def _resolve_coordinator(hass: HomeAssistant, device_id: str | None) -> JackeryC
     if device is not None:
         for entry_id in device.config_entries:
             if entry_id in entries:
+                _LOGGER.debug("Resolved device_id %s to Jackery unit %s", device_id, entries[entry_id].address)
                 return entries[entry_id]
     if device_id in entries:
         return entries[device_id]
+    _LOGGER.debug("device_id %s did not match any configured Jackery unit", device_id)
     raise HomeAssistantError(f"No Jackery device found for device_id {device_id}")

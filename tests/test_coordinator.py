@@ -279,3 +279,42 @@ async def test_send_raw_command_merges_response_frames(hass, coordinator, monkey
 
     assert frames == [{"customField": 123}]
     assert coordinator.telemetry.fields["customField"] == 123
+
+
+async def test_successful_poll_logs_resolved_device_and_merged_frames(hass, coordinator, monkeypatch, caplog) -> None:
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: object(),
+    )
+    monkeypatch.setattr(
+        coordinator._client, "async_run_session", AsyncMock(return_value=[{"soc": 87}])
+    )
+
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.coordinator"):
+        await coordinator._async_update_data()
+
+    messages = [record.message for record in caplog.records]
+    assert any("resolved to BLE device" in message for message in messages)
+    assert any("Merging" in message and "response frame" in message for message in messages)
+
+
+async def test_unexpected_error_without_configured_reporter_is_logged_and_skipped(
+    hass, monkeypatch, caplog
+) -> None:
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+    coordinator = JackeryCoordinator(hass, entry, error_reporter=None)
+    monkeypatch.setattr(
+        "custom_components.jackery.coordinator.bluetooth.async_ble_device_from_address",
+        lambda *_a, **_k: object(),
+    )
+    monkeypatch.setattr(coordinator._client, "async_run_session", AsyncMock(side_effect=ValueError("bug")))
+
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.coordinator"):
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+    assert any(
+        "is not configured" in record.message and "not reporting" in record.message
+        for record in caplog.records
+    )

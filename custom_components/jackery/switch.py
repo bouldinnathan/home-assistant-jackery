@@ -74,7 +74,9 @@ class JackerySwitch(JackeryEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         _LOGGER.debug("User requested turn_on for %s", self._field_key)
         await self.coordinator.async_write_field(self._field_key, True)
+        _LOGGER.debug("turn_on for %s completed", self._field_key)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         _LOGGER.debug("User requested turn_off for %s", self._field_key)
         await self.coordinator.async_write_field(self._field_key, False)
+        _LOGGER.debug("turn_off for %s completed", self._field_key)

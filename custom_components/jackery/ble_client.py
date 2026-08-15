@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from .const import BLE_NOTIFY_CHAR_UUID, BLE_WRITE_CHAR_UUID
@@ -57,6 +58,7 @@ class JackeryBLEClient:
         write never share overlapping GATT sessions with the same device.
         """
         async with self._lock:
+            session_started = time.monotonic()
             _LOGGER.debug(
                 "Starting BLE session with %s: %d command(s), connect_timeout=%.1fs, command_timeout=%.1fs",
                 self._address,
@@ -69,11 +71,17 @@ class JackeryBLEClient:
                 return await self._send_commands(client, commands, command_timeout, responses_per_command)
             finally:
                 await self._disconnect(client)
+                _LOGGER.debug(
+                    "BLE session with %s took %.2fs end-to-end (connect+commands+disconnect)",
+                    self._address,
+                    time.monotonic() - session_started,
+                )
 
     async def _connect(self, ble_device: BLEDevice, connect_timeout: float) -> Any:
         from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 
         _LOGGER.debug("Connecting to Jackery unit %s (timeout=%.1fs)", self._address, connect_timeout)
+        connect_started = time.monotonic()
         try:
             async with asyncio.timeout(connect_timeout):
                 client = await establish_connection(
@@ -87,7 +95,9 @@ class JackeryBLEClient:
         except Exception as err:
             _LOGGER.warning("Failed to connect to Jackery unit %s: %s", self._address, err)
             raise JackeryConnectionError(f"Failed to connect to {self._address}: {err}") from err
-        _LOGGER.info("Connected to Jackery unit %s", self._address)
+        _LOGGER.info(
+            "Connected to Jackery unit %s in %.2fs", self._address, time.monotonic() - connect_started
+        )
         return client
 
     async def _disconnect(self, client: Any) -> None:
@@ -114,12 +124,21 @@ class JackeryBLEClient:
                 collected.extend(frames)
                 frame_event.set()
 
+        _LOGGER.debug("Starting BLE notifications on %s for %s", BLE_NOTIFY_CHAR_UUID, self._address)
         await client.start_notify(BLE_NOTIFY_CHAR_UUID, _on_notify)
         try:
-            for command in commands:
+            for command_index, command in enumerate(commands):
                 target_count = len(collected) + responses_per_command
                 payload = encode(command)
-                _LOGGER.debug("Writing command to %s: %s (%s)", self._address, command, payload)
+                _LOGGER.debug(
+                    "Writing command %d/%d to %s: %s (%s)",
+                    command_index + 1,
+                    len(commands),
+                    self._address,
+                    command,
+                    payload,
+                )
+                command_started = time.monotonic()
                 await client.write_gatt_char(BLE_WRITE_CHAR_UUID, payload, response=True)
 
                 frame_event.clear()
@@ -138,6 +157,12 @@ class JackeryBLEClient:
                     raise JackeryCommandTimeoutError(
                         f"No response to {command.get('cmd', command)} within {command_timeout}s"
                     ) from err
+                _LOGGER.debug(
+                    "Command %s to %s answered in %.2fs",
+                    command.get("cmd", command),
+                    self._address,
+                    time.monotonic() - command_started,
+                )
         finally:
             assembler.reset()
             try:

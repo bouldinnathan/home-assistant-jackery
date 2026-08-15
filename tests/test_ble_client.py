@@ -201,3 +201,23 @@ async def test_sessions_are_serialized_by_the_internal_lock(monkeypatch, fake_bl
 
     assert results == [[{"ok": True}], [{"ok": True}]]
     assert connect_calls == 2
+
+
+async def test_run_session_logs_connect_and_total_duration(monkeypatch, fake_ble_device, caplog) -> None:
+    fake_client = _FakeBleakClient(responses={"device_get": [{"ok": True}]})
+
+    async def _fake_establish_connection(_client_cls, _ble_device, _address):
+        return fake_client
+
+    monkeypatch.setattr("bleak_retry_connector.establish_connection", _fake_establish_connection)
+
+    client = JackeryBLEClient("AA:BB:CC:DD:EE:FF")
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.ble_client"):
+        await client.async_run_session(
+            fake_ble_device, [{"cmd": "device_get"}], connect_timeout=1, command_timeout=1
+        )
+
+    messages = [record.message for record in caplog.records]
+    assert any("Connected to Jackery unit" in message for message in messages)
+    assert any("took" in message and "end-to-end" in message for message in messages)
+    assert any("answered in" in message for message in messages)

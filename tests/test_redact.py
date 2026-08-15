@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from custom_components.jackery.redact import sanitize_data, sanitize_string
 
 
@@ -120,3 +122,19 @@ def test_sanitize_data_stops_recursing_past_max_depth() -> None:
         depths += 1
     assert cursor == "<max depth reached>"
     assert depths <= 13
+
+
+def test_sanitize_string_logs_only_when_it_actually_redacts_something(caplog) -> None:
+    with caplog.at_level(logging.DEBUG, logger="custom_components.jackery.redact"):
+        sanitize_string("Battery at 87 percent")
+        assert not caplog.records
+
+        sanitize_string("contact user@example.com")
+        assert any("Redacted sensitive content" in record.message for record in caplog.records)
+
+
+def test_sanitize_data_logs_sensitive_key_redaction(caplog) -> None:
+    with caplog.at_level(logging.DEBUG, logger="custom_components.jackery.redact"):
+        sanitize_data({"github_token": "ghp_abcdefghijklmnopqrstuvwxyz0123456789"})
+
+    assert any("Redacting value for sensitive key" in record.message for record in caplog.records)

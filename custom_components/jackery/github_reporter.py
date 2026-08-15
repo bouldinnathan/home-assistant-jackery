@@ -62,6 +62,13 @@ class GitHubIssueReporter:
     async def async_report(self, error: Exception, context: str) -> None:
         """Fingerprint ``error`` and file a deduplicated GitHub issue if warranted."""
         fingerprint = _fingerprint(error)
+        _LOGGER.debug(
+            "Considering an automatic GitHub report for %s during %s (fingerprint %s, repo %s)",
+            type(error).__name__,
+            context,
+            fingerprint,
+            self._repo,
+        )
         now = time.monotonic()
 
         last_reported = self._state.fingerprint_last_reported.get(fingerprint)
@@ -103,6 +110,7 @@ class GitHubIssueReporter:
     async def _async_issue_exists(self, fingerprint: str) -> bool:
         session = async_get_clientsession(self._hass)
         query = f'repo:{self._repo} in:title "{fingerprint}" is:issue'
+        _LOGGER.debug("Searching %s for an existing issue with fingerprint %s", self._repo, fingerprint)
         async with session.get(
             f"{_API_BASE}/search/issues",
             params={"q": query},

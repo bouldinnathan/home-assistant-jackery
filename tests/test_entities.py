@@ -136,6 +136,37 @@ async def test_device_info_reflects_identified_model_and_firmware(hass, mock_ble
     assert (CONNECTION_BLUETOOTH, ADDRESS) in device.connections
 
 
+async def test_entity_creation_is_logged_at_debug(hass, mock_ble_poll, caplog) -> None:
+    mock_ble_poll.return_value = [{"soc": 87}]
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.entity"):
+        await _setup_entry(hass)
+
+    assert any("Created entity" in record.message for record in caplog.records)
+
+
+async def test_entity_value_change_is_logged_at_debug(hass, mock_ble_poll, caplog) -> None:
+    mock_ble_poll.return_value = [{"soc": 50}]
+    entry = await _setup_entry(hass)
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+
+    # Entities only start receiving coordinator-update callbacks (and so only
+    # start tracking a "last logged value") after they're added to hass, which
+    # happens after the entry's first refresh - so prime that first callback
+    # with an unchanged value before asserting on a real transition. Uses the
+    # direct (non-debounced) refresh so two back-to-back calls both actually
+    # poll, rather than the second being coalesced by async_request_refresh's
+    # debouncer.
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    mock_ble_poll.return_value = [{"soc": 51}]
+    with caplog.at_level("DEBUG", logger="custom_components.jackery.entity"):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert any("value changed: 50 -> 51" in record.message for record in caplog.records)
+
+
 async def test_new_fields_on_a_later_poll_add_new_entities(hass, mock_ble_poll) -> None:
     mock_ble_poll.return_value = [{"soc": 50}]
     entry = await _setup_entry(hass)

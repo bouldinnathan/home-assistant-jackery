@@ -7,10 +7,13 @@ here means a new sensitive pattern only needs to be taught once.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 _REDACTED = "**REDACTED**"
 
@@ -77,18 +80,24 @@ def sanitize_string(value: str) -> str:
         _LONG_HEX_RE,
     ):
         sanitized = pattern.sub(_REDACTED, sanitized)
+    if sanitized != value:
+        _LOGGER.debug("Redacted sensitive content from a string value (%d char(s) originally)", len(value))
     return sanitized
 
 
 def sanitize_data(value: Any, *, depth: int = 0) -> Any:
     """Recursively return a JSON-safe, redacted copy of ``value``."""
+    if depth == 0:
+        _LOGGER.debug("Sanitizing %s before it leaves the device", type(value).__name__)
     if depth > 12:
+        _LOGGER.debug("Sanitize depth limit reached, truncating remaining nested data")
         return "<max depth reached>"
     if isinstance(value, Mapping):
         result: dict[str, Any] = {}
         for raw_key, item in value.items():
             key = str(raw_key)
             if _is_sensitive_key(key):
+                _LOGGER.debug("Redacting value for sensitive key %r entirely", key)
                 result[key] = _REDACTED
                 continue
             result[sanitize_string(key)] = sanitize_data(item, depth=depth + 1)

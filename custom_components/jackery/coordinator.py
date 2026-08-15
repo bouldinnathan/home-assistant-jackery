@@ -68,6 +68,15 @@ class JackeryCoordinator(DataUpdateCoordinator[DeviceTelemetry]):
             update_interval=dt.timedelta(seconds=scan_interval),
             config_entry=entry,
         )
+        _LOGGER.debug(
+            "Coordinator created for Jackery unit %s: scan_interval=%ss, connect_timeout=%ss, "
+            "command_timeout=%ss, error_reporter=%s",
+            self.address,
+            scan_interval,
+            self.connect_timeout,
+            self.command_timeout,
+            "enabled" if error_reporter is not None else "disabled",
+        )
 
     @property
     def telemetry(self) -> DeviceTelemetry:
@@ -79,6 +88,13 @@ class JackeryCoordinator(DataUpdateCoordinator[DeviceTelemetry]):
         if ble_device is None:
             _LOGGER.debug(
                 "Jackery unit %s not currently visible to any Bluetooth adapter/proxy", self.address
+            )
+        else:
+            _LOGGER.debug(
+                "Jackery unit %s resolved to BLE device %s (rssi=%s)",
+                self.address,
+                ble_device,
+                getattr(ble_device, "rssi", "unknown"),
             )
         return ble_device
 
@@ -122,7 +138,14 @@ class JackeryCoordinator(DataUpdateCoordinator[DeviceTelemetry]):
         self._consecutive_failures = 0
         self._telemetry.connected = True
         self._telemetry.rssi = getattr(ble_device, "rssi", None)
-        for frame in frames:
+        _LOGGER.debug(
+            "Merging %d response frame(s) from Jackery unit %s (rssi=%s)",
+            len(frames),
+            self.address,
+            self._telemetry.rssi,
+        )
+        for index, frame in enumerate(frames):
+            _LOGGER.debug("Merging frame %d/%d for %s: %s", index + 1, len(frames), self.address, frame)
             self._telemetry.merge(frame)
         duration = time.monotonic() - started
         _LOGGER.info(
@@ -169,6 +192,7 @@ class JackeryCoordinator(DataUpdateCoordinator[DeviceTelemetry]):
         # rejected the command.
         self._telemetry.fields[path] = value
         self.async_set_updated_data(self._telemetry)
+        _LOGGER.debug("Write %s=%r to Jackery unit %s acknowledged, requesting refresh", path, value, self.address)
         await self.async_request_refresh()
 
     async def async_send_raw_command(self, command: dict[str, Any]) -> list[dict[str, Any]]:
@@ -208,7 +232,14 @@ class JackeryCoordinator(DataUpdateCoordinator[DeviceTelemetry]):
 
     async def _report(self, error: Exception, context: str) -> None:
         if self._error_reporter is None:
+            _LOGGER.debug(
+                "GitHub crash reporting is not configured for %s; not reporting %s during %s",
+                self.address,
+                type(error).__name__,
+                context,
+            )
             return
+        _LOGGER.debug("Reporting %s during %s for %s to the configured GitHub crash reporter", type(error).__name__, context, self.address)
         try:
             await self._error_reporter(error, context)
         except Exception:  # noqa: BLE001 - the reporter must never break the coordinator
