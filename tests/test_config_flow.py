@@ -15,7 +15,7 @@ ADDRESS = "AA:BB:CC:DD:EE:FF"
 
 async def test_user_step_shows_manual_text_field_when_nothing_discovered(hass, monkeypatch) -> None:
     monkeypatch.setattr(
-        "custom_components.jackery.config_flow.async_discovered_service_info",
+        "homeassistant.components.bluetooth.async_discovered_service_info",
         lambda *_a, **_k: [],
     )
 
@@ -27,7 +27,7 @@ async def test_user_step_shows_manual_text_field_when_nothing_discovered(hass, m
 
 async def test_user_step_creates_entry_for_manually_entered_address(hass, monkeypatch) -> None:
     monkeypatch.setattr(
-        "custom_components.jackery.config_flow.async_discovered_service_info",
+        "homeassistant.components.bluetooth.async_discovered_service_info",
         lambda *_a, **_k: [],
     )
 
@@ -41,9 +41,9 @@ async def test_user_step_creates_entry_for_manually_entered_address(hass, monkey
 
 
 async def test_user_step_offers_discovered_jackery_devices(hass, monkeypatch) -> None:
-    discovered = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234")
+    discovered = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234", rssi=-55, service_uuids=[])
     monkeypatch.setattr(
-        "custom_components.jackery.config_flow.async_discovered_service_info",
+        "homeassistant.components.bluetooth.async_discovered_service_info",
         lambda *_a, **_k: [discovered],
     )
 
@@ -57,10 +57,10 @@ async def test_user_step_offers_discovered_jackery_devices(hass, monkeypatch) ->
 async def test_user_step_excludes_already_configured_discovered_devices(hass, monkeypatch) -> None:
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_BLE_ADDRESS: ADDRESS}, unique_id=ADDRESS)
     entry.add_to_hass(hass)
-    already_configured = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234")
-    other = SimpleNamespace(address="11:22:33:44:55:66", name="Jackery_HL9999")
+    already_configured = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234", rssi=-55, service_uuids=[])
+    other = SimpleNamespace(address="11:22:33:44:55:66", name="Jackery_HL9999", rssi=-60, service_uuids=[])
     monkeypatch.setattr(
-        "custom_components.jackery.config_flow.async_discovered_service_info",
+        "homeassistant.components.bluetooth.async_discovered_service_info",
         lambda *_a, **_k: [already_configured, other],
     )
 
@@ -71,10 +71,36 @@ async def test_user_step_excludes_already_configured_discovered_devices(hass, mo
     assert "11:22:33:44:55:66" in schema_keys
 
 
-async def test_manual_entry_of_a_discovered_address_uses_its_advertised_name(hass, monkeypatch) -> None:
-    discovered = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234")
+async def test_user_step_also_offers_non_jackery_named_devices(hass, monkeypatch) -> None:
+    # A unit that advertises under an unexpected/custom name would never be
+    # offered if the picklist only showed "Jackery*"-named devices - the
+    # broader listing must still surface it, clearly marked as unconfirmed.
+    other_address = "11:22:33:44:55:66"
+    unrelated = SimpleNamespace(address=other_address, name="SomeOtherBLEGadget", rssi=-70, service_uuids=[])
     monkeypatch.setattr(
-        "custom_components.jackery.config_flow.async_discovered_service_info",
+        "homeassistant.components.bluetooth.async_discovered_service_info",
+        lambda *_a, **_k: [unrelated],
+    )
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    schema_keys = result["data_schema"].schema[CONF_BLE_ADDRESS].container
+    assert other_address in schema_keys
+    assert "not confirmed Jackery" in schema_keys[other_address]
+    assert "-70 dBm" in schema_keys[other_address]
+
+    # Picking it still works, using its advertised name as the entry title.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_BLE_ADDRESS: other_address}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == "SomeOtherBLEGadget"
+
+
+async def test_manual_entry_of_a_discovered_address_uses_its_advertised_name(hass, monkeypatch) -> None:
+    discovered = SimpleNamespace(address=ADDRESS, name="Jackery_HL1234", rssi=-55, service_uuids=[])
+    monkeypatch.setattr(
+        "homeassistant.components.bluetooth.async_discovered_service_info",
         lambda *_a, **_k: [discovered],
     )
 
@@ -89,7 +115,7 @@ async def test_duplicate_address_aborts_as_already_configured(hass, monkeypatch)
     entry = MockConfigEntry(domain=DOMAIN, data={CONF_BLE_ADDRESS: ADDRESS}, unique_id=ADDRESS)
     entry.add_to_hass(hass)
     monkeypatch.setattr(
-        "custom_components.jackery.config_flow.async_discovered_service_info",
+        "homeassistant.components.bluetooth.async_discovered_service_info",
         lambda *_a, **_k: [],
     )
 

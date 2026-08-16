@@ -16,6 +16,7 @@ from custom_components.jackery.const import (
     CONF_BLE_ADDRESS,
     DOMAIN,
     SERVICE_REFRESH,
+    SERVICE_SCAN_BLUETOOTH_DEVICES,
     SERVICE_SEND_RAW_COMMAND,
 )
 
@@ -191,6 +192,55 @@ async def test_unknown_device_id_raises_clear_error(hass) -> None:
         await hass.services.async_call(
             DOMAIN, SERVICE_REFRESH, {ATTR_DEVICE_ID: "does-not-exist"}, blocking=True
         )
+
+
+async def test_scan_bluetooth_devices_service_returns_all_visible_devices(hass, monkeypatch) -> None:
+    await _setup_entry(hass)
+
+    from types import SimpleNamespace
+
+    devices = [
+        SimpleNamespace(
+            address="AA:BB:CC:DD:EE:01",
+            name="Jackery_HL9999",
+            rssi=-50,
+            service_uuids=["0000ffff-0000-1000-8000-00805f9b34fb"],
+        ),
+        SimpleNamespace(
+            address="AA:BB:CC:DD:EE:02",
+            name="SomeOtherBLEGadget",
+            rssi=-80,
+            service_uuids=[],
+        ),
+    ]
+    monkeypatch.setattr(
+        "homeassistant.components.bluetooth.async_discovered_service_info",
+        lambda *_a, **_k: devices,
+    )
+
+    result = await hass.services.async_call(
+        DOMAIN, SERVICE_SCAN_BLUETOOTH_DEVICES, {}, blocking=True, return_response=True
+    )
+
+    assert len(result["devices"]) == 2
+    jackery_device = next(d for d in result["devices"] if d["address"] == "AA:BB:CC:DD:EE:01")
+    assert jackery_device["looks_like_jackery"] is True
+    assert jackery_device["rssi"] == -50
+    other_device = next(d for d in result["devices"] if d["address"] == "AA:BB:CC:DD:EE:02")
+    assert other_device["looks_like_jackery"] is False
+
+
+async def test_scan_bluetooth_devices_service_is_logged_at_info(hass, monkeypatch, caplog) -> None:
+    await _setup_entry(hass)
+    monkeypatch.setattr(
+        "homeassistant.components.bluetooth.async_discovered_service_info",
+        lambda *_a, **_k: [],
+    )
+
+    with caplog.at_level("INFO", logger="custom_components.jackery"):
+        await hass.services.async_call(DOMAIN, SERVICE_SCAN_BLUETOOTH_DEVICES, {}, blocking=True)
+
+    assert any("Bluetooth scan requested" in record.message for record in caplog.records)
 
 
 async def test_changing_options_reloads_the_config_entry(hass) -> None:

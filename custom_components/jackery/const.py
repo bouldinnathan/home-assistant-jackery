@@ -40,6 +40,7 @@ ATTR_FIRMWARE: Final = "firmware_version"
 
 SERVICE_REFRESH: Final = "refresh"
 SERVICE_SEND_RAW_COMMAND: Final = "send_raw_command"
+SERVICE_SCAN_BLUETOOTH_DEVICES: Final = "scan_bluetooth_devices"
 ATTR_DEVICE_ID: Final = "device_id"
 ATTR_COMMAND: Final = "command"
 

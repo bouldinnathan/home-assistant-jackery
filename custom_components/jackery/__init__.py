@@ -23,9 +23,11 @@ from .const import (
     EVENT_RAW_COMMAND_RESPONSE,
     PLATFORMS,
     SERVICE_REFRESH,
+    SERVICE_SCAN_BLUETOOTH_DEVICES,
     SERVICE_SEND_RAW_COMMAND,
 )
 from .coordinator import JackeryCoordinator
+from .discovery import list_visible_devices
 from .github_reporter import GitHubIssueReporter
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,7 +86,12 @@ def _async_register_services(hass: HomeAssistant) -> None:
     if hass.services.has_service(DOMAIN, SERVICE_REFRESH):
         _LOGGER.debug("Jackery services already registered, skipping")
         return
-    _LOGGER.debug("Registering Jackery services: %s, %s", SERVICE_REFRESH, SERVICE_SEND_RAW_COMMAND)
+    _LOGGER.debug(
+        "Registering Jackery services: %s, %s, %s",
+        SERVICE_REFRESH,
+        SERVICE_SEND_RAW_COMMAND,
+        SERVICE_SCAN_BLUETOOTH_DEVICES,
+    )
 
     async def _refresh(call: ServiceCall) -> None:
         coordinator = _resolve_coordinator(hass, call.data.get(ATTR_DEVICE_ID))
@@ -108,6 +115,24 @@ def _async_register_services(hass: HomeAssistant) -> None:
             return {"frames": frames}
         return None
 
+    async def _scan_bluetooth_devices(call: ServiceCall) -> dict[str, Any] | None:
+        # Not tied to any particular Jackery unit - a direct, live snapshot
+        # of everything Home Assistant currently sees over Bluetooth, for
+        # finding a unit that doesn't show up in Add Integration (e.g. it
+        # advertises under an unexpected name) or troubleshooting discovery
+        # in general. Continuous background scanning means this is always
+        # fresh; there's no separate "start a scan" step.
+        devices = list_visible_devices(hass)
+        jackery_like = sum(1 for device in devices if device["looks_like_jackery"])
+        _LOGGER.info(
+            "Bluetooth scan requested: %d visible connectable device(s) (%d Jackery-looking)",
+            len(devices),
+            jackery_like,
+        )
+        if getattr(call, "return_response", True):
+            return {"devices": devices}
+        return None
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_REFRESH,
@@ -124,6 +149,13 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 vol.Required(ATTR_COMMAND): vol.Any(cv.string, dict),
             }
         ),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SCAN_BLUETOOTH_DEVICES,
+        _scan_bluetooth_devices,
+        schema=vol.Schema({}),
         supports_response=SupportsResponse.OPTIONAL,
     )
 

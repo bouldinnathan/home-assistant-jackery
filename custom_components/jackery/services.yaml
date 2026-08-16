@@ -18,3 +18,5 @@ send_raw_command:
       example: '{"cmd": "data_get", "type": "full"}'
       selector:
         object:
+
+scan_bluetooth_devices: {}

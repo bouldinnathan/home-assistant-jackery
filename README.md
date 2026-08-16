@@ -15,8 +15,11 @@ no MQTT broker - Home Assistant talks directly to the device over BLE.
 ## Features
 
 - **Bluetooth discovery** - devices advertising as `Jackery_HL*`/`Jackery*`
-  or the known GATT service UUID are offered automatically; manual MAC-address
-  entry also works.
+  or the known GATT service UUID are offered automatically. The manual-entry
+  step also lists *every* nearby Bluetooth device Home Assistant currently
+  sees (not just Jackery-looking ones, clearly marked "not confirmed
+  Jackery"), so a unit advertising under an unexpected name still shows up -
+  and manual MAC-address entry always works too.
 - **Dynamically discovered entities** - rather than hardcoding field names
   that can't be verified against every model, every telemetry field the
   device reports is turned into a sensor, binary sensor, or (for
@@ -86,6 +89,46 @@ Typically you'll see something like:
   scheduled interval. Optional `device_id` if you have more than one unit.
 - `jackery.send_raw_command` - send an arbitrary JSON command, e.g.
   `{"cmd": "data_get", "type": "full"}`, and get the raw response back.
+- `jackery.scan_bluetooth_devices` - list every Bluetooth device Home
+  Assistant currently sees nearby (name, address, signal strength,
+  advertised service UUIDs), not just ones already recognized as Jackery.
+  Requires at least one Jackery unit already configured (to register the
+  service), but isn't tied to that unit - it's a general discovery/debug
+  tool. Call it from Developer Tools -> Actions with "Response data" checked
+  to see the list.
+
+### WiFi-connected units
+
+Some Jackery models also support WiFi via the Jackery app. That path talks
+to **Jackery's cloud service**, not anything discoverable on your local
+network - there's no local HTTP/mDNS/UPnP API to connect to directly (this
+was confirmed by checking how existing third-party integrations for these
+same portable power-station models work: they authenticate against
+Jackery's cloud with your account credentials, and require internet
+connectivity). Supporting that would mean depending on Jackery's cloud
+staying online and your account credentials living in Home Assistant -
+exactly what this integration was built to avoid (see "Why there's no
+cloud/MQTT fallback here" in [docs/PROTOCOL.md](docs/PROTOCOL.md)). BLE
+remains the only local path for these models.
+
+If you believe your specific unit exposes something on the local network
+that isn't cloud traffic, a Wireshark capture is the way to check:
+
+1. On the phone/tablet running the Jackery app, connect to the same WiFi
+   network as the unit.
+2. Capture with Wireshark on a machine that can see that traffic - either
+   run Wireshark on a Wi-Fi adapter in monitor mode, or (easier) set up the
+   phone to route through a machine running Wireshark (a shared "hotspot"
+   from a laptop, or a mitmproxy/Wireshark-capable VPN profile on the
+   phone).
+3. Filter to the power station's IP (find it via your router's client list,
+   matched by MAC address on the unit's label) with `ip.addr == <that IP>`.
+4. Open the app, let it talk to the unit, and watch what shows up. Plain
+   HTTP or an unencrypted local protocol on that IP would be genuinely new
+   information; TLS/HTTPS traffic to an external IP confirms it's cloud-only.
+
+Open an issue with what you find (redact anything sensitive) and this can
+be revisited.
 
 ## Debug logging
 

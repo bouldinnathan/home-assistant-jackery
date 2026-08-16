@@ -62,6 +62,10 @@
           "description": "A JSON object to send, e.g. {\"cmd\": \"data_get\", \"type\": \"full\"}."
         }
       }
+    },
+    "scan_bluetooth_devices": {
+      "name": "Scan Bluetooth devices",
+      "description": "List every Bluetooth device Home Assistant currently sees nearby, not just ones already recognized as Jackery, with name, address, signal strength, and advertised service UUIDs. Useful for finding a unit that isn't showing up in Add Integration, or for troubleshooting discovery in general."
     }
   }
 }

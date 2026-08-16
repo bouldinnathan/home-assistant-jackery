@@ -7,10 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.components.bluetooth import (
-    BluetoothServiceInfoBleak,
-    async_discovered_service_info,
-)
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.core import callback
 
 from .const import (
@@ -28,12 +25,21 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
+from .discovery import list_visible_devices, looks_like_jackery_name
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _looks_like_jackery(name: str | None) -> bool:
-    return bool(name) and name.casefold().startswith("jackery")
+def _option_label(device: dict[str, Any]) -> str:
+    """Build a picklist label like "Jackery_HL1234 (-55 dBm)" or, for a
+    device only found via the broader scan, "Some Gadget - not confirmed
+    Jackery (-72 dBm)" so it's clear which entries are a name match.
+    """
+    name = device["name"] or device["address"]
+    rssi = f" ({device['rssi']} dBm)" if device["rssi"] is not None else ""
+    if device["looks_like_jackery"]:
+        return f"{name}{rssi}"
+    return f"{name} - not confirmed Jackery{rssi}"
 
 
 class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -51,7 +57,7 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         _LOGGER.debug(
             "Bluetooth discovery for Jackery: address=%s name=%s", discovery_info.address, discovery_info.name
         )
-        if not _looks_like_jackery(discovery_info.name):
+        if not looks_like_jackery_name(discovery_info.name):
             # manifest.json also matches on GATT service UUID 0xFFFF, which is
             # a generic/reserved value many unrelated BLE devices advertise
             # for testing (unlike a random 128-bit UUID, it isn't unique to
@@ -91,17 +97,29 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
-        """Handle manual setup, offering any already-seen Jackery-looking devices."""
+        """Handle manual setup, offering every nearby Bluetooth device.
+
+        Not just names matching "Jackery*": a unit that advertises under an
+        unexpected or custom name would otherwise never show up here at
+        all. This lists everything Home Assistant currently sees over
+        Bluetooth - Jackery-looking devices first and clearly labeled, then
+        everything else - and manual MAC entry is still always available if
+        your unit isn't visible over Bluetooth at all.
+        """
         errors: dict[str, str] = {}
         current_addresses = self._async_current_ids()
-        self._discovered_devices = {
-            info.address: info.name or info.address
-            for info in async_discovered_service_info(self.hass, connectable=True)
-            if info.address not in current_addresses and _looks_like_jackery(info.name)
-        }
+        visible = list_visible_devices(self.hass, exclude_addresses=current_addresses)
+        jackery_like = [device for device in visible if device["looks_like_jackery"]]
+        other = [device for device in visible if not device["looks_like_jackery"]]
         _LOGGER.debug(
-            "User (manual) setup step: %d already-seen Jackery-looking device(s) offered", len(self._discovered_devices)
+            "User (manual) setup step: %d Jackery-looking device(s), %d other nearby Bluetooth device(s) offered",
+            len(jackery_like),
+            len(other),
         )
+
+        ordered = jackery_like + other
+        self._discovered_devices = {device["address"]: (device["name"] or device["address"]) for device in ordered}
+        labels = {device["address"]: _option_label(device) for device in ordered}
 
         if user_input is not None:
             address = user_input[CONF_BLE_ADDRESS]
@@ -111,8 +129,8 @@ class JackeryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.debug("User manually entered Jackery address %s (name=%s)", address, name)
             return self._async_create(address, name)
 
-        if self._discovered_devices:
-            schema = vol.Schema({vol.Required(CONF_BLE_ADDRESS): vol.In(self._discovered_devices)})
+        if labels:
+            schema = vol.Schema({vol.Required(CONF_BLE_ADDRESS): vol.In(labels)})
         else:
             schema = vol.Schema({vol.Required(CONF_BLE_ADDRESS): str})
 
