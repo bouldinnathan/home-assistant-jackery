@@ -3,6 +3,12 @@ name: tests
 on:
   push:
   pull_request:
+  # requirements-dev.txt leaves "homeassistant" unpinned, so a new release
+  # can break these tests with no commit of ours to trigger them. Run daily
+  # to catch that drift instead of discovering it at the next push.
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,7 +20,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements-dev.txt
       - run: python -m compileall -q custom_components tests
@@ -26,13 +32,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Home Assistant requires Python >= 3.14.2 from 2026.7.0 onward, so
+        # "current" must run on 3.14 - on 3.13 pip silently resolves
+        # "homeassistant" back to the last 3.13-compatible release and the
+        # job stops testing anything current. The pinned "minimum" stays on
+        # 3.13 because 2025.1.4's dependencies predate 3.14 wheels.
         include:
           - label: minimum
             requirement: homeassistant==2025.1.4
             python: "3.13"
           - label: current
             requirement: homeassistant
-            python: "3.13"
+            python: "3.14"
     name: Home Assistant ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v6

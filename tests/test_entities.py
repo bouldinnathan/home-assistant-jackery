@@ -128,7 +128,7 @@ async def test_device_info_reflects_identified_model_and_firmware(hass, mock_ble
     entry = await _setup_entry(hass)
 
     device_registry = dr.async_get(hass)
-    device = next(d for d in device_registry.devices.values() if entry.entry_id in d.config_entries)
+    device = dr.async_entries_for_config_entry(device_registry, entry.entry_id)[0]
 
     assert device.manufacturer == "Jackery"
     assert device.model == "Explorer 2000 Plus"

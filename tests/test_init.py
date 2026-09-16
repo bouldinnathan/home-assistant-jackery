@@ -162,9 +162,7 @@ async def test_services_use_device_id_to_pick_the_right_coordinator(hass) -> Non
     second_coordinator.async_request_refresh = AsyncMock()
 
     device_registry = dr.async_get(hass)
-    device = next(
-        d for d in device_registry.devices.values() if first.entry_id in d.config_entries
-    )
+    device = dr.async_entries_for_config_entry(device_registry, first.entry_id)[0]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_REFRESH, {ATTR_DEVICE_ID: device.id}, blocking=True
